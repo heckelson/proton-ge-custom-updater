@@ -26,14 +26,15 @@ if [ -d "/home/$(whoami)/.local/share/Steam" ]; then
         echo "--> Current version is already installed. Exiting..."
         exit 1
     else
+
         # Download latest release, extract the files and delete the archive
         # TODO check if VirtualBox and its kernel modules are installed and enabled at boot.
         # TODO check if vagrant is installed
-
         if [ $1 == "--compile" ]; then
             echo "--> Cloning the repository at http://github.com/gloriouseggroll/proton-ge-custom"
-            # git clone --recurse-submodules http://github.com/gloriouseggroll/proton-ge-custom &> /dev/null
-            
+            git clone --recurse-submodules http://github.com/gloriouseggroll/proton-ge-custom &> /dev/null
+            cd proton-ge-custom
+
             # Adding custom patches?
             echo "--> Would you like to add custom patches? (y/n)"
             read input
@@ -46,13 +47,12 @@ if [ -d "/home/$(whoami)/.local/share/Steam" ]; then
 
             # apply all patches in the patches/ directory, saving the output in a file.
             echo "--> Applying patches..."
-            # exec ./patches/protonprep.sh &> patchlog.txt
+            exec ./patches/protonprep.sh &> patchlog.txt
 
             # check for errors in the patches
             echo "--> Checking for errors during patch application..."
             error_count=$(expr $(grep -ic fail patchlog.txt) + $(grep -ic error patchlog.txt))
             echo "--> Errors found: $error_count"
-
 
             # exit the program if there are errors. 
             if [ $error_count > 0 ]; then
@@ -65,26 +65,47 @@ if [ -d "/home/$(whoami)/.local/share/Steam" ]; then
             print ">"
             read build_name
 
-
-
-
-            # launching vagrant
+            # launch vagrant
+            echo "Launching vagrant, this might take some time..."
             vagrant up
-        
+            vagrant up # it might ask to run 'vagrant up' on the first launch
 
+            # if the build name is empty, put this name in.
+            # (e.g. proton_custom_2020-06-26_22:40)
+            if [ "$build_name" == "" ]; then
+                build_name="proton_custom_$(date +%F_%R)"
+            fi
+            
+            echo "--> Compiling custom proton..."
+            build_name=$build_name make redist | tee buildlog.txt
+            
+            # TODO check the build log
 
+            # stop vagrant
+            echo "--> Stopping vagrant..."
+            vagrant halt
+            
+            # move the built proton to the right location
+            if [ -d "../$build_name" ]; then
+                echo "--> The directory exists already!"
+                exit
+            else
+                # move the built proton up two directories
+                # (vagrant_share > proton-ge-custom > compatibilitytools.d)
+                echo "Moving the build to the right place..."
+                mv vagrant_share/$build_name ../../
+            fi
 
-
-
-        else
+        else # if --compile is not set
             echo "--> Downloading $filename..."
             curl -sL "$url" --output "$filename"
             echo "--> Extracting $filename..."
             tar -xf "$filename"
             echo "--> Removing the compressed archive..."
             rm "$filename"
-            echo "--> Done. Please check the command line for errors and restart Steam for the changes to take effect."
         fi
+
+        echo "--> Done. Please check the command line for errors and restart Steam for the changes to take effect."
     fi
 else
     echo "--> Steam does not seem to be installed. Please make sure everything is installed properly."
