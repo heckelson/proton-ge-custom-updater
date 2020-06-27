@@ -1,5 +1,6 @@
 #!/bin/bash
 
+
 echo "╔══════════════════════════════════════════════════════════════════════╗"
 echo "║  This program will download and install the latest Proton-GE-Custom  ║"
 echo "║  Refer to github.com/GloriousEggroll/proton-ge-custom for more info  ║"
@@ -8,9 +9,6 @@ echo "╚═══════════════════════�
 # Get the latest Proton-GE-Custom release (url and filename)
 url="$(curl -s https://api.github.com/repos/GloriousEggroll/proton-ge-custom/releases/latest | grep browser_download_url | cut -d '"' -f 4)"
 filename="$(echo $url | sed 's|.*/||')"
-
-echo "url = $url"
-echo "filename = $filename"
 
 # Check if steam is properly installed
 if [ -d "/home/$(whoami)/.local/share/Steam" ]; then
@@ -27,42 +25,54 @@ if [ -d "/home/$(whoami)/.local/share/Steam" ]; then
         exit 1
     else
 
-        # Download latest release, extract the files and delete the archive
+
         # TODO check if VirtualBox and its kernel modules are installed and enabled at boot.
-        # TODO check if vagrant is installed
+        
+        
         if [ $1 == "--compile" ]; then
+            # check if vagrant is installed
+            if [ ! -x "$(command -v vagrant)" ]; then
+                echo "--> Please make sure 'vagrant' is installed on your system!"
+                echo "--> (If you have 'vagrant' aliased, this check also fails!)"
+                exit 1
+            fi
+            
             echo "--> Cloning the repository at http://github.com/gloriouseggroll/proton-ge-custom"
-            git clone --recurse-submodules http://github.com/gloriouseggroll/proton-ge-custom &> /dev/null
+            git clone --recurse-submodules http://github.com/gloriouseggroll/proton-ge-custom 
+            
+            # switch to the right directory.
             cd proton-ge-custom
+
 
             # Adding custom patches?
             echo "--> Would you like to add custom patches? (y/n)"
-            read input
-            
+            read input 
             if [ ${input:0:1} == "y" ] || [ ${input:0:1} == "Y" ]; then
-                echo "--> Please add your custom patches, edit the file, and rerun the script."
+                echo "--> Please add your custom patches, edit the file 'patches/protonprep.sh' accordingly, and then rerun the script."
                 echo "--> The patches need to be added to $pwd/scripts"
                 exit
             fi
 
             # apply all patches in the patches/ directory, saving the output in a file.
             echo "--> Applying patches..."
-            exec ./patches/protonprep.sh &> patchlog.txt
 
-            # check for errors in the patches
+            source patches/protonprep.sh &> patchlog.txt
+            # check for errors in the protonprep script.
             echo "--> Checking for errors during patch application..."
-            error_count=$(expr $(grep -ic fail patchlog.txt) + $(grep -ic error patchlog.txt))
-            echo "--> Errors found: $error_count"
 
+            # the protonprep script put us into the wine directory. we need to navigate back out
+            cd ../
+
+            error_count=$(expr $(grep -ic fail patchlog.txt) + $(grep -ic error patchlog.txt))
             # exit the program if there are errors. 
             if [ $error_count > 0 ]; then
-                echo "--> There were errors during patch application. Exiting..."
-                exit
+                echo "$(grep -i fail patchlog.txt)"
+                echo "$(grep -i error patchlog.txt)"
+                echo "--> There were $error_count errors during patch application."
             fi
            
             # ask for a name for the build
-            echo "What would you like to name your build?"
-            print ">"
+            echo "--> What would you like to name your build?"
             read build_name
 
             # launch vagrant
@@ -76,8 +86,10 @@ if [ -d "/home/$(whoami)/.local/share/Steam" ]; then
                 build_name="proton_custom_$(date +%F_%R)"
             fi
             
+            # the format to build it is build_name=SomeName make redist | tee buildlog.txt
+            # but since build_name is already defined we don't need to set it there
             echo "--> Compiling custom proton..."
-            build_name=$build_name make redist | tee buildlog.txt
+            make redist | tee buildlog.txt
             
             # TODO check the build log
 
@@ -90,13 +102,25 @@ if [ -d "/home/$(whoami)/.local/share/Steam" ]; then
                 echo "--> The directory exists already!"
                 exit
             else
-                # move the built proton up two directories
+                # move the built proton up two directories,
                 # (vagrant_share > proton-ge-custom > compatibilitytools.d)
-                echo "Moving the build to the right place..."
+                echo "Moving the build to the 'compatibilitytools.d' folder..."
                 mv vagrant_share/$build_name ../../
             fi
+            
+            echo "--> Would you like to delete the build files? (y/n)"
+
+            read input
+            
+            if [ ${input:0:1} == "y" ] || [ ${input:0:1} == "Y" ]; then
+                echo "--> Deleting the build files..."
+                # need to call rm with -f because of the git files (?)
+                rm -rf ../proton-ge-custom 
+            fi
+
 
         else # if --compile is not set
+        # Download latest release, extract the files and delete the archive
             echo "--> Downloading $filename..."
             curl -sL "$url" --output "$filename"
             echo "--> Extracting $filename..."
